@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+
+# 数据集文件
+VAA_VideoEmotion8/
+VideoEmotionDataset/
+VideoEmotionDataset_1/
+*.mp4
+*.avi
+*.mp3
+*.wav
+
+# 图像文件
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+imgs/
+frames/
+
+# 字幕文件
+*.srt
+*.vtt
+srt/
+
+# 训练结果和日志
+results/
+logs/
+*.log
+runs/
+checkpoints/
+
+# TensorBoard
+events.out.tfevents.*
+tensorboard_logs/
+
+# 调试文件
+debug_analysis_files/
+*.debug
+*.tmp
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 环境文件
+.env
+*.env
+
+# 大文件和模型
+models/ast/pretrained_models/*.pth
+models/mbt/pretrained_models/*.pth
+pretrained_models/
+*.zip
+*.tar
+*.tar.gz
+
+# 其他临时文件
+*.bak
+*.cache
+.pytest_cache/

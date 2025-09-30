@@ -40,13 +40,20 @@ def train_epoch_parrel_ema(epoch, data_loader, model, model_ema, criterion, opti
         visual, target, audio, visualization_item, words, batch_size = process_data_item_w_language(opt, data_item)
         data_time.update(time.time() - end_time)
 
+        # 🔧 修复：合并原始文本和情感增强文本，保持与视频/音频序列长度一致
         flattened_words = []
         for vid in range(visual.size(0)):
             for seg in range(visual.size(1)):
-                flattened_words.append(words[vid][seg])
-                # emotion filter
-                emo = text_tools['emo_net'].call([words[vid][seg]],text_tools['tokenizer'],visual.device)[0]
-                flattened_words.append(emo[-1])
+                original_text = words[vid][seg]
+                # 获取情感增强文本
+                emo = text_tools['emo_net'].call([original_text], text_tools['tokenizer'], visual.device)[0]
+                emotion_text = emo[-1]
+
+                # 🔧 关键修复：将原始文本和情感文本合并，而不是分别添加
+                combined_text = f"{original_text} {emotion_text}"
+                flattened_words.append(combined_text)
+
+        print(f"🔧 Fixed text processing: {len(flattened_words)} text segments (matching video/audio)")
 
         text_ids = text_tools['tokenizer'](flattened_words, padding='longest', truncation=True, return_tensors='pt')['input_ids'].to(visual.device)
 

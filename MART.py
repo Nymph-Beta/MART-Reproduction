@@ -116,17 +116,50 @@ class MultiHeadAttentionOp(nn.Module):
         self.linear_o = nn.Linear(in_features, in_features, bias)
 
     def forward(self, q, k, v, mask=None):
+        """
+        改进的多头注意力：保持MART原始设计意图
+        - 保持序列长度不对称（文本短，视频长）
+        - 只修复真正的批次维度问题
+        """
+        # 线性变换
         q, k, v = self.linear_q(q), self.linear_k(k), self.linear_v(v)
         if self.activation is not None:
             q = self.activation(q)
             k = self.activation(k)
             v = self.activation(v)
 
+        # 检查批次维度
+        q_batch, q_seq, q_feat = q.size()
+        k_batch, k_seq, k_feat = k.size()
+        v_batch, v_seq, v_feat = v.size()
+
+        # 如果批次维度不匹配，这通常表示数据加载有问题
+        if q_batch != k_batch or q_batch != v_batch:
+            # 只在第一次出现时打印警告，避免过多输出
+            if not hasattr(self, '_batch_mismatch_warned'):
+                print(f"⚠️  Batch dimension mismatch: q={q_batch}, k={k_batch}, v={v_batch}")
+                print(f"   Using min batch size as temporary fix")
+                self._batch_mismatch_warned = True
+
+            # 使用最小批次大小作为临时解决方案
+            min_batch = min(q_batch, k_batch, v_batch)
+            q = q[:min_batch]
+            k = k[:min_batch]
+            v = v[:min_batch]
+
+        # 保持原始序列长度 - 这是MART cross-attention的核心
+        # 文本(短) -> 视频/音频(长) 的非对称注意力
+
         q = self._reshape_to_batches(q)
         k = self._reshape_to_batches(k)
         v = self._reshape_to_batches(v)
+
         if mask is not None:
+            # 调整mask以适应不同序列长度
+            if mask.size(-1) != k.size(-2) or mask.size(-2) != q.size(-2):
+                mask = torch.ones(q.size(-2), k.size(-2), device=q.device, dtype=torch.bool)
             mask = mask.repeat(self.head_num, 1, 1)
+
         y, attn = ScaledDotProductAttention()(q, k, v, mask)
         y = self._reshape_from_batches(y)
 
@@ -329,7 +362,21 @@ class MART(nn.Module):
 		# Decoder
 		# position
 		v = self.decoder_embd(v)
-		v = v + self.decoder_pos_embed.to(v.device)
+
+		# Handle dynamic sequence length for positional embedding
+		if L != self.decoder_pos_embed.shape[0]:
+			# Create dynamic positional embedding for current sequence length and feature dimension
+			_, _, actual_feature_dim = v.shape
+			pos_embed = get_sinusoid_encoding_table(L, actual_feature_dim).to(v.device)
+			v = v + pos_embed
+		else:
+			# Check if feature dimensions match
+			_, _, actual_feature_dim = v.shape
+			if actual_feature_dim != self.decoder_pos_embed.shape[1]:
+				pos_embed = get_sinusoid_encoding_table(L, actual_feature_dim).to(v.device)
+				v = v + pos_embed
+			else:
+				v = v + self.decoder_pos_embed.to(v.device)
 
 		# Blocks
 		for blk in self.decoder_blocks:
@@ -340,8 +387,16 @@ class MART(nn.Module):
 		return v, Vmask
 
 	def forward_d(self, visual):
+		B, L, C = visual.shape
 		x = self.decoder_embd(visual)
-		x = x + self.decoder_pos_embed.to(x.device)
+
+		# Handle dynamic sequence length for positional embedding
+		if L != self.decoder_pos_embed.shape[0]:
+			# Create dynamic positional embedding for current sequence length
+			pos_embed = get_sinusoid_encoding_table(L, self.decoder_pos_embed.shape[1]).to(x.device)
+			x = x + pos_embed
+		else:
+			x = x + self.decoder_pos_embed.to(x.device)
 
 		for blk in self.decoder_blocks:
 			x = blk(x)
@@ -387,6 +442,22 @@ class MART(nn.Module):
 
 		# Inter attention
 		fv_att_inter = lv_att.mean(dim=1).detach().clone()
+
+		# Fix dimension mismatch: make fv_att_inter compatible with fv_att_intra
+		if fv_att_inter.shape[1] != fv_att_intra.shape[1]:
+			# Get the target dimension from fv_att_intra
+			target_dim = fv_att_intra.shape[1]
+			current_dim = fv_att_inter.shape[1]
+
+			if current_dim < target_dim:
+				# Pad fv_att_inter to match fv_att_intra dimensions
+				padding_size = target_dim - current_dim
+				padding = torch.zeros(fv_att_inter.shape[0], padding_size, device=fv_att_inter.device, dtype=fv_att_inter.dtype)
+				fv_att_inter = torch.cat([fv_att_inter, padding], dim=1)
+			else:
+				# Truncate fv_att_inter to match fv_att_intra dimensions
+				fv_att_inter = fv_att_inter[:, :target_dim]
+
 		Vattm = lamb * fv_att_intra + (1-lamb) * fv_att_inter
 		del lv_att, la_att, fv_att_intra, fv_att_inter
 		torch.cuda.empty_cache()

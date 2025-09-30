@@ -7,6 +7,7 @@ from core.loss import get_loss
 from core.optimizer import get_optim
 from core.utils import local2global_path, get_spatial_transform, ModelEMA, setup_seed
 from core.dataset import get_training_set, get_validation_set, get_test_set, get_data_loader, get_val_loader
+from core.logger import setup_complete_logging
 
 from transforms.temporal import TSN
 from transforms.target import ClassLabel
@@ -18,6 +19,7 @@ from validation import val_epoch_av
 from torch.utils.data import DataLoader
 from torch.cuda import device_count
 from tools.word_utils import initialize_tokenizer
+from tools.text_emotion import TextSentiment
 
 from tensorboardX import SummaryWriter
 
@@ -33,6 +35,14 @@ def main():
     setup_seed()
     opt.device_ids = list(range(device_count()))
     local2global_path(opt)
+
+    # Setup complete logging system
+    logger = setup_complete_logging(opt.result_path, "MART")
+    logger.info("="*80)
+    logger.info("MART Training Started")
+    logger.info("="*80)
+    logger.info(f"Configuration: {opt}")
+
     print(opt)
     model, parameters = generate_model(opt)
     model_ema = ModelEMA(model,decay=0.999)
@@ -43,14 +53,19 @@ def main():
     # opt.exp_name = os.path.join('results',opt.exp_name)
     if not os.path.exists(opt.exp_name):
         os.makedirs(opt.exp_name)
-    writer = SummaryWriter(logdir=opt.exp_name)
+
+    # Use proper log_path for TensorBoard
+    writer = SummaryWriter(logdir=opt.log_path)
+    logger.info(f"TensorBoard logs will be saved to: {opt.log_path}")
 
     tokenizer, max_input_length, init_token_idx, eos_token_idx, _, _ = initialize_tokenizer()
+    text_sentiment = TextSentiment()
     text_tools = {
         'tokenizer': tokenizer,
         'max_input_length': max_input_length,
         'init_token_idx': init_token_idx,
-        'eos_token_idx': eos_token_idx
+        'eos_token_idx': eos_token_idx,
+        'emo_net': text_sentiment
     }
 
     # train
@@ -66,23 +81,44 @@ def main():
     target_transform = ClassLabel()
     validation_data = get_validation_set(opt, spatial_transform, temporal_transform, target_transform, opt.val_len)
     val_loader = get_val_loader(opt, validation_data, shuffle=False)
+
+    logger.info(f"Training data: {len(training_data)} samples")
+    logger.info(f"Validation data: {len(validation_data)} samples")
+    logger.info(f"Classes: {training_data.class_names}")
+
     best_acc = 0
     best_epoch = -1
     vid_model = MART(model=model).cuda()
+
+    logger.info("Starting first phase training (with MART wrapper)")
     for i in range(1, opt.n_epochs + 1):
+        logger.info(f"Epoch {i}/{opt.n_epochs}")
         train_epoch_parrel_ema(i, train_loader, vid_model, model_ema, criterion, optimizer, opt, training_data.class_names, writer, text_tools)
+
     model = vid_model.vit
     del vid_model
     torch.cuda.empty_cache()
+
+    logger.info("Starting second phase training (ViT only)")
     for i in range(opt.n_epochs + 1, opt.n_epochs + 151):
+        logger.info(f"Epoch {i}/{opt.n_epochs + 150}")
         train_epoch_ema(i, train_loader, model.cuda(), model_ema, criterion, optimizer, opt, training_data.class_names, writer)
         acc = val_epoch_av(i, val_loader, model_ema.ema, criterion, opt, writer, optimizer)
+
         if acc>best_acc:
             best_acc = acc
             best_epoch = i
             torch.save(model_ema.ema.state_dict(), os.path.join(opt.exp_name, 'best.ckpt'))
+            logger.info(f"New best model saved! Accuracy: {best_acc:.4f}")
+
+        logger.info(f'History Best Accuracy: {best_acc:.4f}, Best Epoch: {best_epoch}')
         print('History Best Accuracy: ', best_acc, '   Best Epoch: ', best_epoch)
+
     writer.close()
+    logger.info("="*80)
+    logger.info("MART Training Completed")
+    logger.info(f"Final Best Accuracy: {best_acc:.4f} at Epoch: {best_epoch}")
+    logger.info("="*80)
 
 
 if __name__ == "__main__":
