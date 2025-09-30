@@ -9,7 +9,7 @@ Enhanced implementation of MART (Masked Affective Representation Learning) with 
 
 > **⚠️ Work In Progress**: This is an ongoing reproduction project. Currently, only VE-8 dataset training has been completed. Multi-dataset experiments and comprehensive performance evaluation (as described in the original paper) are planned for future work.
 
-## Dataset
+## Datasets
 
 This implementation uses **VideoEmotion-8 (VE-8)**, one of the five benchmark datasets evaluated in the MART paper.
 
@@ -19,7 +19,31 @@ This implementation uses **VideoEmotion-8 (VE-8)**, one of the five benchmark da
 - **Role in Paper**: Used to evaluate MART's performance on fine-grained emotion classification with multimodal features (video, audio, text)
 - **Current Status**: This repository uses VE-8 for reproducing the paper's video emotion recognition experiments
 
-> **Note**: The original MART paper evaluates on five datasets (including MOSI, MOSEI, IEMOCAP, etc.) for different tasks (sentiment analysis, emotion recognition). This implementation currently focuses on VE-8 for video emotion recognition as an initial reproduction.
+> **Note**: The original MART paper evaluates on five datasets for different tasks (sentiment analysis, emotion recognition). This implementation currently focuses on VE-8 for video emotion recognition as an initial reproduction.
+
+### All Datasets Used in MART Paper
+
+| Dataset | Task | Download Link |
+|---------|------|---------------|
+| **VideoEmotion-8 (VE-8)** | Video Emotion Recognition (8 classes) | [Yanwei Fu's Page](https://yanweifu.github.io/) |
+| **Ekman-6** | Video Emotion Recognition (6 classes) | [Yanwei Fu's Page](https://yanweifu.github.io/) |
+| **ERATO (PERR)** | Pairwise Emotional Relationship Recognition | [OpenDataLab](https://opendatalab.com/OpenDataLab/ERATO) |
+| **IEMOCAP** | Multimodal Emotion Recognition | [USC SAIL Lab](https://sail.usc.edu/iemocap/) (Registration required) |
+| **Aff-Wild2** | Continuous Emotion Recognition | [Imperial College iBUG](https://ibug.doc.ic.ac.uk/resources/aff-wild2/) (Agreement required) |
+
+### Pretrained Models
+
+MART requires two external pretrained weights:
+
+| Model | Purpose | Download Link | Placement |
+|-------|---------|---------------|-----------|
+| **AST** (Audio Spectrogram Transformer) | Audio feature extraction | [audioset_10_10_0.4593.pth](https://mitprod-my.sharepoint.com/personal/yuangong_mit_edu/_layouts/15/onedrive.aspx?id=%2Fpersonal%2Fyuangong%5Fmit%5Fedu%2FDocuments%2Fast%5Fmodels%2Faudioset%5F10%5F10%5F0%2E4593%2Epth&parent=%2Fpersonal%2Fyuangong%5Fmit%5Fedu%2FDocuments%2Fast%5Fmodels&ga=1) | `./models/ast/pretrained_models/` |
+| **VideoMAE ViT-B/16** | Video feature extraction | [videomae_base_patch16_224.pth](https://huggingface.co/MCG-NJU/videomae-base) | `./models/mbt/pretrained_models/vit_base_patch16_224/` |
+
+**Note**: VideoMAE can be automatically downloaded using the included `download_videomae.py` script:
+```bash
+python download_videomae.py
+```
 
 ## Features
 
